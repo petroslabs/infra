@@ -26,6 +26,11 @@ services:
     environment:
       CONTAINERS: 1
       NETWORKS: 1
+      # Sans elle, Traefik ne reçoit pas les évènements de (re)création de
+      # conteneur et ne détecte un nouveau déploiement qu'au redémarrage de
+      # Traefik lui-même — c'est exactement la limitation de symfony_env que
+      # ce dépôt remplace, pas à reproduire.
+      EVENTS: 1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
