@@ -1,0 +1,105 @@
+# =============================================================================
+# PetrosLabs infra — reverse proxy partagé (PRODUCTION)
+# =============================================================================
+#
+# Usage : make up-prod
+#         (ou directement : docker compose --env-file .env.docker
+#          -f compose.prod.yaml up -d)
+#
+# Fichier COMPLET, et non une surcharge de compose.yaml. Les trois sources de
+# configuration statique de Traefik — fichier, arguments, variables
+# d'environnement — sont mutuellement exclusives, et le fichier l'emporte.
+# Une surcharge qui aurait hérité du montage de `traefik.yml` (dev) aurait donc
+# silencieusement ignoré l'adresse ACME et le serveur d'autorité passés ici en
+# arguments, et le premier déploiement aurait échoué à obtenir un certificat
+# sans qu'on comprenne pourquoi. D'où la configuration statique en ARGUMENTS
+# ici : c'est la seule des trois sources qui accepte l'interpolation de
+# Compose, donc les valeurs qui changent d'un déploiement à l'autre.
+
+services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: infra_docker_proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-proxy
+
+  traefik:
+    image: traefik:v3.6
+    container_name: infra_traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - --global.sendAnonymousUsage=false
+      # Pas de dashboard exposé en production : aucun projet n'en a besoin, et
+      # l'API Traefik ne doit pas être joignable publiquement sans authentification.
+      - --api.dashboard=false
+      - --api.insecure=false
+      # JSON : les journaux de production ont vocation à être collectés.
+      - --log.level=INFO
+      - --log.format=json
+      - --accesslog.format=json
+      - --accesslog.filters.statuscodes=400-499,500-599
+      - --entrypoints.http.address=:80
+      - --entrypoints.http.http.redirections.entrypoint.to=https
+      - --entrypoints.http.http.redirections.entrypoint.scheme=https
+      - --entrypoints.http.http.redirections.entrypoint.permanent=true
+      - --entrypoints.https.address=:443
+      # Défi HTTP-01 sur l'entrypoint http, malgré la redirection permanente :
+      # Traefik sert lui-même le chemin de validation avec une priorité
+      # supérieure.
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=http
+      - --certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json
+      # Adresse du compte ACME. Obligatoire : la pile refuse de démarrer sans,
+      # plutôt que d'échouer plus tard sur un enregistrement incompréhensible.
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL est obligatoire en production}
+      # Autorité de certification. Le défaut est la production de Let's Encrypt.
+      #
+      # Pour un premier déploiement, viser d'abord le bac à sable :
+      #   ACME_CA_SERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+      # La production limite à cinq échecs de validation par heure et cinquante
+      # certificats par domaine et par semaine : une configuration DNS
+      # approximative épuise ce quota avant qu'on ait compris, et il faut alors
+      # attendre.
+      - --certificatesresolvers.letsencrypt.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --providers.docker=true
+      - --providers.docker.endpoint=tcp://docker-proxy:2375
+      - --providers.docker.watch=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=edge
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.watch=true
+    volumes:
+      - ./docker/traefik/dynamic.prod.yaml:/etc/traefik/dynamic.yml:ro
+      # Les certificats survivent aux redéploiements : les perdre à chaque fois
+      # épuiserait les quotas de l'autorité en quelques jours.
+      - acme_data:/etc/traefik/acme
+    depends_on:
+      - docker-proxy
+    networks:
+      - edge
+      - docker-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+
+networks:
+  edge:
+    name: edge
+  docker-proxy:
+    internal: true
+
+volumes:
+  acme_data:

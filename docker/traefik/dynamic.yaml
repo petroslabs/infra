@@ -1,0 +1,12 @@
+# =============================================================================
+# Traefik — configuration dynamique (développement)
+# =============================================================================
+#
+# Certificats engendrés par mkcert, dont l'autorité est installée dans le
+# magasin du système et des navigateurs. Sans elle, un service worker (PWA) ne
+# s'enregistre pas : un contexte non sécurisé le lui interdit.
+
+tls:
+  certificates:
+    - certFile: /etc/certs/local-cert.pem
+      keyFile: /etc/certs/local-key.pem

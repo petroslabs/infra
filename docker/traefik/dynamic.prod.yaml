@@ -1,0 +1,13 @@
+# =============================================================================
+# Traefik — configuration dynamique (production)
+# =============================================================================
+#
+# Volontairement vide de certificats : en production ils viennent d'ACME, pas
+# d'un fichier.
+
+tls:
+  options:
+    default:
+      # Rien en dessous de TLS 1.2. Les versions antérieures n'ont plus de
+      # raison d'être acceptées.
+      minVersion: VersionTLS12

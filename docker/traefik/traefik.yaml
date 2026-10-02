@@ -1,0 +1,53 @@
+# =============================================================================
+# Traefik — configuration statique (développement)
+# =============================================================================
+
+global:
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+log:
+  level: INFO
+  format: common
+
+accessLog:
+  format: common
+  filters:
+    statusCodes:
+      - "400-499"
+      - "500-599"
+
+entryPoints:
+  http:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: https
+          scheme: https
+          permanent: true
+  https:
+    address: ":443"
+    http:
+      tls: {}
+
+providers:
+  docker:
+    # Par un mandataire en lecture seule, jamais par le socket Docker en direct :
+    # accès au socket vaut accès root sur l'hôte, et Traefik n'a besoin que de
+    # lire la liste des conteneurs.
+    endpoint: "tcp://docker-proxy:2375"
+    watch: true
+    # Un conteneur n'est exposé que s'il le demande explicitement.
+    exposedByDefault: false
+    # Le réseau est écrit EN DUR, et il doit l'être : Traefik ne lit qu'UNE
+    # source de configuration statique, et le fichier l'emporte sur les
+    # variables d'environnement. Sans cette ligne, Traefik choisit un réseau au
+    # hasard parmi ceux du conteneur appelant et renvoie des 504.
+    network: edge
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true

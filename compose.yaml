@@ -1,0 +1,79 @@
+# =============================================================================
+# PetrosLabs infra — reverse proxy partagé (développement)
+# =============================================================================
+#
+# Le seul rôle de ce dépôt : le reverse proxy (Traefik) que plusieurs projets
+# peuvent partager sur un même hôte. Rien d'autre n'y vit — pas de base de
+# données, pas de file de messages, pas de données applicatives. Voir
+# CLAUDE.md pour la discipline de périmètre.
+#
+# Un reverse proxy possède les ports 80 et 443 : il ne peut y en avoir qu'un
+# par machine. Chaque projet reste autonome (sa propre base embarquée, son
+# propre conteneur applicatif) et ne fait que DÉCLARER son routage par des
+# étiquettes Traefik sur le réseau `edge`, externe, que ce dépôt possède.
+#
+# Usage : make up (dev) / make up-prod (production, cf. compose.prod.yaml).
+
+services:
+  # Le socket Docker en lecture seule. Y donner accès en direct reviendrait à
+  # donner root sur l'hôte ; Traefik n'a besoin que de lister les conteneurs.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: infra_docker_proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-proxy
+
+  traefik:
+    image: traefik:v3.6
+    container_name: infra_traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/traefik/traefik.yaml:/etc/traefik/traefik.yml:ro
+      - ./docker/traefik/dynamic.yaml:/etc/traefik/dynamic.yml:ro
+      - ./docker/traefik/certs:/etc/certs:ro
+    depends_on:
+      - docker-proxy
+    networks:
+      - edge
+      - docker-proxy
+    labels:
+      - "traefik.enable=true"
+      # Middleware déclaré ICI, sur le conteneur Traefik, et non dans le
+      # fichier dynamique : un projet le référence sans préfixe de
+      # fournisseur (`https-redirect`), ce que Traefik ne résout que dans le
+      # fournisseur du routeur — docker.
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+      # Tableau de bord, sur son propre nom d'hôte. Développement uniquement —
+      # compose.prod.yaml ne le route pas.
+      - "traefik.http.routers.traefik-http.entrypoints=http"
+      - "traefik.http.routers.traefik-http.rule=Host(`${TRAEFIK_DOMAIN:-traefik.localhost}`)"
+      - "traefik.http.routers.traefik-http.middlewares=https-redirect"
+      - "traefik.http.routers.traefik.entrypoints=https"
+      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN:-traefik.localhost}`)"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.service=api@internal"
+
+networks:
+  # Nom FIXE : la configuration statique de Traefik (docker/traefik/traefik.yaml)
+  # le nomme en dur et ne peut pas l'interpoler. Les projets qui rejoignent ce
+  # proxy pointent leur PROXY_NETWORK dessus (`edge` par défaut).
+  edge:
+    name: edge
+
+  # Cloisonné : seul Traefik parle au mandataire du socket.
+  docker-proxy:
+    internal: true
