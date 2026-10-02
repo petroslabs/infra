@@ -37,6 +37,16 @@ Pour qu'un projet rejoigne ce proxy, il suffit qu'il pointe
 déclare son routage par des étiquettes Traefik — aucune dépendance de code,
 aucune donnée partagée.
 
+En développement, le domaine `*.localhost` d'un projet n'est pas toujours
+couvert par le certificat mkcert existant (OpenSSL refuse un joker placé
+directement sous un domaine de premier niveau pour certains noms à une seule
+étiquette). Si un projet affiche une erreur de certificat, régénérer avec son
+domaine explicite :
+
+```bash
+make certs DOMAINS="mon-projet.localhost"
+```
+
 ## Stack
 
 - Traefik v3 (reverse proxy, TLS)

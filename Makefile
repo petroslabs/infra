@@ -48,11 +48,22 @@ certs: ## Engendrer les certificats TLS de développement (mkcert)
 	@# placé directement sous un domaine de premier niveau pour certaines
 	@# vérifications strictes (comme il refuse "*.fr") — d'où l'ajout explicite
 	@# de domaines ici au besoin, via DOMAINS="mon-projet.localhost ...".
-	@if [ ! -f docker/traefik/certs/local-cert.pem ]; then \
+	@# Le contrôle demande à OpenSSL si le certificat vaut pour chaque nom
+	@# demandé, plutôt que de se fier à la seule présence du fichier : un
+	@# certificat engendré avant qu'un projet rejoigne ce proxy ne le couvrirait
+	@# pas, et resterait pourtant en place sans régénération.
+	@missing=0; \
+	for host in localhost $(DOMAINS); do \
+		openssl x509 -in docker/traefik/certs/local-cert.pem -noout -checkhost "$$host" 2>/dev/null \
+			| grep -q "does match" || missing=1; \
+	done; \
+	if [ "$$missing" = 1 ]; then \
+		existing=$$(openssl x509 -in docker/traefik/certs/local-cert.pem -noout -ext subjectAltName 2>/dev/null \
+			| grep -oE 'DNS:[^,]+' | sed 's/DNS://'); \
 		mkcert \
 			-cert-file docker/traefik/certs/local-cert.pem \
 			-key-file docker/traefik/certs/local-key.pem \
-			"localhost" "*.localhost" $(DOMAINS); \
+			"localhost" "*.localhost" $(DOMAINS) $$existing; \
 		$(DOCKER_COMP) restart traefik 2>/dev/null || true; \
 	fi
 	@echo "$(GREEN)✔ Certificats TLS présents$(RESET)"
