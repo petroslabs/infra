@@ -24,6 +24,9 @@ entryPoints:
   http:
     address: ":80"
     http:
+      # PHP lit X_Forwarded_For comme X-Forwarded-For (HTTP_X_FORWARDED_FOR) :
+      # sans ça, un client peut usurper les en-têtes que Traefik positionne.
+      aliasHeadersStrategy: delete
       redirections:
         entryPoint:
           to: https
@@ -32,6 +35,7 @@ entryPoints:
   https:
     address: ":443"
     http:
+      aliasHeadersStrategy: delete
       tls: {}
 
 providers:

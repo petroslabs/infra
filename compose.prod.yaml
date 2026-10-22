@@ -63,6 +63,10 @@ services:
       - --entrypoints.http.http.redirections.entrypoint.scheme=https
       - --entrypoints.http.http.redirections.entrypoint.permanent=true
       - --entrypoints.https.address=:443
+      # PHP lit X_Forwarded_For comme X-Forwarded-For (HTTP_X_FORWARDED_FOR) :
+      # sans ça, un client peut usurper les en-têtes que Traefik positionne.
+      - --entrypoints.http.http.aliasHeadersStrategy=delete
+      - --entrypoints.https.http.aliasHeadersStrategy=delete
       # Défi HTTP-01 sur l'entrypoint http, malgré la redirection permanente :
       # Traefik sert lui-même le chemin de validation avec une priorité
       # supérieure.
