@@ -37,7 +37,9 @@ services:
       - docker-proxy
 
   traefik:
-    image: traefik:v3.6
+    # Version exacte : un tag flottant (v3.6) n'est jamais retéléchargé par
+    # `up -d`, et l'image en place vieillit sans que rien ne le signale.
+    image: traefik:v3.7.16
     container_name: infra_traefik
     restart: unless-stopped
     security_opt:
